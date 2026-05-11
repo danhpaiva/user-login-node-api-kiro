@@ -112,13 +112,13 @@ describe('POST /api/users', () => {
   test('returns 400 for an invalid email format', async () => {
     const res = await request(app).post('/api/users').send({ name: 'A', email: 'not-an-email', password: 'pass123' });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Invalid email format');
+    expect(res.body.errors.email).toBeDefined();
   });
 
   test('returns 400 when password is shorter than 6 characters', async () => {
     const res = await request(app).post('/api/users').send({ name: 'A', email: 'a@test.com', password: '123' });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Password must be at least 6 characters');
+    expect(res.body.errors.password).toBeDefined();
   });
 
   test('returns 409 when email is already in use', async () => {
@@ -149,7 +149,7 @@ describe('PUT /api/users/:id', () => {
     const user = await createUser();
     const res = await request(app).put(`/api/users/${user.id}`).send({ email: 'bad-email' });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Invalid email format');
+    expect(res.body.errors.email).toBeDefined();
   });
 
   test('returns 400 when new password is too short', async () => {

@@ -4,9 +4,6 @@ const bcrypt = require('bcryptjs');
 
 /**
  * Executes a SELECT and returns all rows as an array of objects.
- * @param {string} sql
- * @param {Array} params
- * @returns {Array<Object>}
  */
 function queryAll(sql, params = []) {
   const db = getDatabase();
@@ -21,20 +18,14 @@ function queryAll(sql, params = []) {
 }
 
 /**
- * Executes a SELECT and returns the first row as an object, or undefined.
- * @param {string} sql
- * @param {Array} params
- * @returns {Object|undefined}
+ * Executes a SELECT and returns the first row, or undefined.
  */
 function queryOne(sql, params = []) {
-  const rows = queryAll(sql, params);
-  return rows[0];
+  return queryAll(sql, params)[0];
 }
 
 /**
  * Executes an INSERT / UPDATE / DELETE statement.
- * @param {string} sql
- * @param {Array} params
  */
 function execute(sql, params = []) {
   const db = getDatabase();
@@ -44,39 +35,67 @@ function execute(sql, params = []) {
 
 class User {
   /**
-   * Find all users (password excluded)
-   * @returns {Array}
+   * Find all active (non-deleted) users — password excluded.
+   * Supports optional pagination via { page, limit }.
+   *
+   * @param {Object} options
+   * @param {number} [options.page=1]
+   * @param {number} [options.limit=20]
+   * @returns {{ data: Array, total: number, page: number, limit: number, totalPages: number }}
    */
-  static findAll() {
-    return queryAll(
-      'SELECT id, name, email, created_at, updated_at FROM users ORDER BY created_at DESC'
+  static findAll({ page = 1, limit = 20 } = {}) {
+    const offset = (page - 1) * limit;
+
+    const countRow = queryOne(
+      'SELECT COUNT(*) as count FROM users WHERE deleted_at IS NULL'
     );
+    const total = countRow ? countRow.count : 0;
+
+    const data = queryAll(
+      `SELECT id, name, email, created_at, updated_at
+       FROM users
+       WHERE deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**
-   * Find a user by ID (password excluded)
+   * Find an active user by ID — password excluded.
    * @param {string} id
    * @returns {Object|undefined}
    */
   static findById(id) {
     return queryOne(
-      'SELECT id, name, email, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, name, email, created_at, updated_at FROM users WHERE id = ? AND deleted_at IS NULL',
       [id]
     );
   }
 
   /**
-   * Find a user by email (includes password for auth purposes)
+   * Find an active user by email — includes password for auth.
    * @param {string} email
    * @returns {Object|undefined}
    */
   static findByEmail(email) {
-    return queryOne('SELECT * FROM users WHERE email = ?', [email]);
+    return queryOne(
+      'SELECT * FROM users WHERE email = ? AND deleted_at IS NULL',
+      [email]
+    );
   }
 
   /**
-   * Create a new user
-   * @param {Object} data - { name, email, password }
+   * Create a new user.
+   * @param {{ name: string, email: string, password: string }}
    * @returns {Object} Created user (password excluded)
    */
   static create({ name, email, password }) {
@@ -93,16 +112,19 @@ class User {
   }
 
   /**
-   * Update an existing user
+   * Update an existing active user.
    * @param {string} id
-   * @param {Object} data - { name?, email?, password? }
+   * @param {{ name?: string, email?: string, password?: string }}
    * @returns {Object|null}
    */
   static update(id, { name, email, password }) {
     const existing = this.findById(id);
     if (!existing) return null;
 
-    const existingFull = queryOne('SELECT * FROM users WHERE id = ?', [id]);
+    const existingFull = queryOne(
+      'SELECT * FROM users WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
 
     const updatedName = name ?? existingFull.name;
     const updatedEmail = email ?? existingFull.email;
@@ -120,7 +142,7 @@ class User {
   }
 
   /**
-   * Delete a user by ID
+   * Soft-delete a user by setting deleted_at.
    * @param {string} id
    * @returns {boolean}
    */
@@ -128,7 +150,10 @@ class User {
     const existing = this.findById(id);
     if (!existing) return false;
 
-    execute('DELETE FROM users WHERE id = ?', [id]);
+    execute(
+      'UPDATE users SET deleted_at = ? WHERE id = ?',
+      [new Date().toISOString(), id]
+    );
     return true;
   }
 }

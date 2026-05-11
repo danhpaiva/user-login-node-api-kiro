@@ -3,20 +3,24 @@ const { cache, KEYS, invalidateAll, invalidateUser } = require('../cache/cache')
 
 class UserController {
   /**
-   * GET /users
-   * List all users — served from cache when available
+   * GET /users?page=1&limit=20
+   * List all active users with pagination — served from cache when available.
    */
   static index(req, res) {
     try {
-      const cached = cache.get(KEYS.allUsers);
+      const page = Math.max(1, parseInt(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+      const cacheKey = `${KEYS.allUsers}:p${page}:l${limit}`;
+
+      const cached = cache.get(cacheKey);
       if (cached !== undefined) {
-        return res.status(200).json({ success: true, data: cached, total: cached.length, fromCache: true });
+        return res.status(200).json({ success: true, ...cached, fromCache: true });
       }
 
-      const users = User.findAll();
-      cache.set(KEYS.allUsers, users);
+      const result = User.findAll({ page, limit });
+      cache.set(cacheKey, result);
 
-      return res.status(200).json({ success: true, data: users, total: users.length, fromCache: false });
+      return res.status(200).json({ success: true, ...result, fromCache: false });
     } catch (error) {
       return res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
     }
@@ -24,7 +28,7 @@ class UserController {
 
   /**
    * GET /users/:id
-   * Get a single user by ID — served from cache when available
+   * Get a single active user by ID — served from cache when available.
    */
   static show(req, res) {
     try {
@@ -48,32 +52,11 @@ class UserController {
 
   /**
    * POST /users
-   * Create a new user — invalidates the full user list cache
+   * Create a new user — body already validated by Zod middleware.
    */
   static store(req, res) {
     try {
       const { name, email, password } = req.body;
-
-      if (!name || !email || !password) {
-        return res.status(400).json({
-          success: false,
-          message: 'Validation error',
-          errors: {
-            ...((!name) && { name: 'Name is required' }),
-            ...((!email) && { email: 'Email is required' }),
-            ...((!password) && { password: 'Password is required' }),
-          },
-        });
-      }
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ success: false, message: 'Invalid email format' });
-      }
-
-      if (password.length < 6) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-      }
 
       const existing = User.findByEmail(email);
       if (existing) {
@@ -91,33 +74,17 @@ class UserController {
 
   /**
    * PUT /users/:id
-   * Update an existing user — invalidates cache for this user and the list
+   * Update an existing user — body already validated by Zod middleware.
    */
   static update(req, res) {
     try {
       const { name, email, password } = req.body;
 
-      if (!name && !email && !password) {
-        return res.status(400).json({
-          success: false,
-          message: 'At least one field (name, email, password) must be provided',
-        });
-      }
-
       if (email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          return res.status(400).json({ success: false, message: 'Invalid email format' });
-        }
-
         const existing = User.findByEmail(email);
         if (existing && existing.id !== req.params.id) {
           return res.status(409).json({ success: false, message: 'Email already in use' });
         }
-      }
-
-      if (password && password.length < 6) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
       }
 
       const user = User.update(req.params.id, { name, email, password });
@@ -134,7 +101,7 @@ class UserController {
 
   /**
    * DELETE /users/:id
-   * Delete a user — invalidates cache for this user and the list
+   * Soft-delete a user — sets deleted_at, does not remove the row.
    */
   static destroy(req, res) {
     try {

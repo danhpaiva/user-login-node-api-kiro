@@ -35,21 +35,24 @@ describe('User.create()', () => {
 });
 
 describe('User.findAll()', () => {
-  test('returns an empty array when no users exist', () => {
-    expect(User.findAll()).toEqual([]);
+  test('returns empty data array when no users exist', () => {
+    const result = User.findAll();
+    expect(result.data).toEqual([]);
+    expect(result.total).toBe(0);
   });
 
-  test('returns all created users', () => {
+  test('returns all created users inside data array', () => {
     User.create({ name: 'A', email: 'a@test.com', password: 'pass123' });
     User.create({ name: 'B', email: 'b@test.com', password: 'pass123' });
-    const users = User.findAll();
-    expect(users).toHaveLength(2);
+    const result = User.findAll();
+    expect(result.data).toHaveLength(2);
+    expect(result.total).toBe(2);
   });
 
   test('never includes the password field', () => {
     User.create({ name: 'A', email: 'a@test.com', password: 'pass123' });
-    const users = User.findAll();
-    users.forEach((u) => expect(u.password).toBeUndefined());
+    const result = User.findAll();
+    result.data.forEach((u) => expect(u.password).toBeUndefined());
   });
 });
 

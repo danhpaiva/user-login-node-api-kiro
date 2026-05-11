@@ -1,6 +1,10 @@
+// Validate env vars before anything else — exits if invalid
+require('./config/env');
+
 const app = require('./app');
 const { initDatabase } = require('./database/database');
 const { runMigrations } = require('./database/migrations');
+const { logger } = require('./middlewares/logger');
 const path = require('path');
 const fs = require('fs');
 
@@ -21,14 +25,14 @@ async function bootstrap() {
 
   // Start server
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📄 API Documentation: http://localhost:${PORT}/docs`);
-    console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
-    console.log(`❤️  Health check: http://localhost:${PORT}/health`);
+    logger.info(`🚀 Server running on http://localhost:${PORT}`);
+    logger.info(`📄 API Documentation: http://localhost:${PORT}/docs`);
+    logger.info(`🔗 API Base URL: http://localhost:${PORT}/api`);
+    logger.info(`❤️  Health check: http://localhost:${PORT}/health`);
   });
 }
 
 bootstrap().catch((err) => {
-  console.error('❌ Failed to start server:', err);
+  logger.error(err, '❌ Failed to start server');
   process.exit(1);
 });
