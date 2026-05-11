@@ -4,7 +4,7 @@ const openApiSpec = {
     title: 'User Login API',
     version: '1.0.0',
     description:
-      'REST API for user management built with Node.js, Express and SQLite. Provides full CRUD operations for users.',
+      'REST API for user management built with Node.js, Express and SQLite. Provides full CRUD operations for users. The DELETE endpoint requires JWT authentication.',
     contact: {
       name: 'API Support',
       email: 'support@example.com',
@@ -22,11 +22,48 @@ const openApiSpec = {
   ],
   tags: [
     {
+      name: 'Auth',
+      description: 'Authentication endpoints',
+    },
+    {
       name: 'Users',
       description: 'User management endpoints',
     },
   ],
   paths: {
+    '/auth/login': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Login',
+        description: 'Authenticates a user with email and password. Returns a JWT Bearer token valid for 1 day.',
+        operationId: 'login',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/LoginRequest' },
+              example: {
+                email: 'john@example.com',
+                password: 'secret123',
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Login successful',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LoginResponse' },
+              },
+            },
+          },
+          400: { $ref: '#/components/responses/ValidationError' },
+          401: { $ref: '#/components/responses/UnauthorizedError' },
+          500: { $ref: '#/components/responses/InternalError' },
+        },
+      },
+    },
     '/users': {
       get: {
         tags: ['Users'],
@@ -162,8 +199,9 @@ const openApiSpec = {
       delete: {
         tags: ['Users'],
         summary: 'Delete a user',
-        description: 'Permanently deletes a user by their UUID.',
+        description: 'Permanently deletes a user by their UUID. **Requires a valid JWT Bearer token.**',
         operationId: 'deleteUser',
+        security: [{ BearerAuth: [] }],
         parameters: [{ $ref: '#/components/parameters/UserId' }],
         responses: {
           200: {
@@ -180,6 +218,7 @@ const openApiSpec = {
               },
             },
           },
+          401: { $ref: '#/components/responses/UnauthorizedError' },
           404: { $ref: '#/components/responses/NotFoundError' },
           500: { $ref: '#/components/responses/InternalError' },
         },
@@ -187,6 +226,14 @@ const openApiSpec = {
     },
   },
   components: {
+    securitySchemes: {
+      BearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'JWT token obtained from POST /auth/login',
+      },
+    },
     schemas: {
       User: {
         type: 'object',
@@ -200,6 +247,25 @@ const openApiSpec = {
           email: { type: 'string', format: 'email', example: 'john@example.com' },
           created_at: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
           updated_at: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
+        },
+      },
+      LoginRequest: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'john@example.com' },
+          password: { type: 'string', example: 'secret123' },
+        },
+      },
+      LoginResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          token: {
+            type: 'string',
+            example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+          },
+          user: { $ref: '#/components/schemas/User' },
         },
       },
       CreateUser: {
@@ -238,6 +304,15 @@ const openApiSpec = {
       },
     },
     responses: {
+      UnauthorizedError: {
+        description: 'Missing or invalid JWT token',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorResponse' },
+            example: { success: false, message: 'Authorization header missing or malformed. Expected: Bearer <token>' },
+          },
+        },
+      },
       NotFoundError: {
         description: 'Resource not found',
         content: {
