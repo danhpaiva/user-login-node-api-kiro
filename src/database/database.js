@@ -7,9 +7,12 @@ const DB_PATH = path.resolve(__dirname, '../../data/database.sqlite');
 let db = null;
 
 /**
- * Persists the in-memory database to disk
+ * Persists the in-memory database to disk.
+ * No-op during tests (NODE_ENV=test).
  */
 function persist() {
+  /* istanbul ignore next */
+  if (process.env.NODE_ENV === 'test') return;
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(DB_PATH, buffer);
@@ -52,3 +55,18 @@ async function initDatabase() {
 }
 
 module.exports = { initDatabase, getDatabase, persist };
+
+/**
+ * FOR TESTING ONLY.
+ * Injects a pre-built in-memory database instance, bypassing file I/O.
+ * @param {Object} testDb - sql.js Database instance
+ */
+/* istanbul ignore next */
+function __setTestDatabase(testDb) {
+  db = testDb;
+  db.pragma = (pragma) => db.run(`PRAGMA ${pragma}`);
+}
+
+if (process.env.NODE_ENV === 'test') {
+  module.exports.__setTestDatabase = __setTestDatabase;
+}
